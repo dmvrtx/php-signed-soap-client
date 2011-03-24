@@ -16,6 +16,10 @@ Requirements
 Usage 
 -----
 
+This class supports `SOAP Message Security`_ standard.
+
+.. _`SOAP Message Security`: http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0.pdf
+
 You should set certificate (in PFX or PKCS7 format) while initializng class. Other
 HTTP options, identical to HTTPRequest_ class request options are accepted too::
 
