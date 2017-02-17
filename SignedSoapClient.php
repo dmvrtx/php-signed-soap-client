@@ -1,30 +1,35 @@
 <?php
 /**
- * Расширение SOAP клиента с подписью сообщений сертификатом и HTTPS соединением
+ * SoapClient extensions which adds ability to sign messages and open HTTPS connections
  * $Id$
  */
 
 /**
- * Класс SOAP клиента с подписью сообщений и HTTPS-соединением
  *
- * Настройки SSL для соединения задаются при создании класса в массиве options в виде массива,
- * аналогично опциям HTTP запроса, например:
+ * SOAP Client class with message signing and HTTPS connections
+ *
+ * SSL settings should be passed on instance creation within `options` associated array.
+ * Available settings are identical to the HTTPRequest class settings, e.g.
+ *
  *    $client = new SignedSoapClient('https://example.com?wsdl', array('ssl' => array('cert' => '/file',
  *          'certpasswd' => 'password')));
  *
- * Файл сертификата может быть как в PEM так и в PKCS12 формате.
+ * SSL certificate could be in PEM or PKCS12 format.
  *
- * (!) Для канонизации XML используется утилита xmllint из пакета libxml2-utils.
+ * >>> This class uses external utility xmlling (usually found in libxml2-utils package) <<<
+ * It is required to canonicalize XML before signing it, as required by standard.
  *
- * Данный вариант подписывает только SOAP-ENV:Body часть запроса, однако легко настраивается на подпись
- * и любых других элементов (см. buildSignedInfo), у которых должен быть прописан атрибут wsu:Id.
+ * This is a basic example, which signes SOAP-ENV:Body part of the request. To change this see how
+ * buildSignedInfo method works and update __doRequest accordingly (see the part where wsu:Id is set
+ * on Body). Make sure that signed element has an wsu:Id attribute.
+ *
  */
 class SignedSoapClient extends SoapClient
 {
-    // путь к xmllint
+    // `xmllint` path
     const XMLLINT_PATH          = '/usr/bin/xmllint';
 
-    // используемые namespace
+    // namespaces defined by standard
     const WSU_NS    = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd';
     const WSSE_NS   = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
     const SOAP_NS   = 'http://schemas.xmlsoap.org/soap/envelope/';
@@ -49,7 +54,7 @@ class SignedSoapClient extends SoapClient
     }
 
     /**
-     * Возвращает UUID случайный или на основе данных
+     * Sample UUID function, based on random number or provided data
      *
      * @param mixed $data
      * @return string
@@ -65,7 +70,7 @@ class SignedSoapClient extends SoapClient
 
 
     /**
-     * Канонизация XML
+     * XML canonicalization (using external utility)
      *
      * @param string $data
      * @return string
@@ -87,7 +92,7 @@ class SignedSoapClient extends SoapClient
     }
 
     /**
-     * Возвращает строку с канонизированной записью DOMNode
+     * Canonicalize DOMNode instance and return result as string
      *
      * @param DOMNode $node
      * @return string
@@ -100,9 +105,9 @@ class SignedSoapClient extends SoapClient
     }
 
     /**
-     * Строит информацию о подписываемых элементах
+     * Prepares SignedInfo DOMElement with required data
      *
-     * Вторым параметром идет список значений wsu:Id подписываемых элементов
+     * $ids array should contain values of wsu:Id attribute of elements to be signed
      *
      * @param DOMDocument $dom
      * @param array $ids
@@ -117,28 +122,32 @@ class SignedSoapClient extends SoapClient
         $xp->registerNamespace('ds', self::DS_NS);
 
         $signedInfo = $dom->createElementNS(self::DS_NS, 'ds:SignedInfo');
-        // алгоритм канонизации
+
+        // canonicalization algorithm
         $method = $signedInfo->appendChild($dom->createElementNS(self::DS_NS, 'ds:CanonicalizationMethod'));
         $method->setAttribute('Algorithm', 'http://www.w3.org/2001/10/xml-exc-c14n#');
-        // алгоритм подписи
+
+        // signature algorithm
         $method = $signedInfo->appendChild($dom->createElementNS(self::DS_NS, 'ds:SignatureMethod'));
         $method->setAttribute('Algorithm', 'http://www.w3.org/2000/09/xmldsig#rsa-sha1');
 
         foreach ($ids as $id) {
-            // найдём узел и его каноническую запись
+            // find a node and canonicalize it
             $nodes = $xp->query("//*[(@wsu:Id='{$id}')]");
             if ($nodes->length == 0)
                 continue;
             $canonicalized = $this->canonicalizeNode($nodes->item(0));
 
-            // создадим Reference для ноды
+            // create node Reference
             $reference = $signedInfo->appendChild($dom->createElementNS(self::DS_NS, 'ds:Reference'));
             $reference->setAttribute('URI', "#{$id}");
             $transforms = $reference->appendChild($dom->createElementNS(self::DS_NS, 'ds:Transforms'));
             $transform = $transforms->appendChild($dom->createElementNS(self::DS_NS, 'ds:Transform'));
-            // укажем, что провели канонизацию
+
+            // mark node as canonicalized
             $transform->setAttribute('Algorithm', 'http://www.w3.org/2001/10/xml-exc-c14n#');
-            // и сделаем дайджест с помощью SHA1
+
+            // and add a SHA1 digest
             $method = $reference->appendChild($dom->createElementNS(self::DS_NS, 'ds:DigestMethod'));
             $method->setAttribute('Algorithm', 'http://www.w3.org/2000/09/xmldsig#sha1');
             $reference->appendChild($dom->createElementNS(self::DS_NS, 'ds:DigestValue', base64_encode(sha1($canonicalized, true))));
@@ -148,7 +157,7 @@ class SignedSoapClient extends SoapClient
     }
 
     /**
-     * Создает элемент wsse:SecurityToken на основе сертификата, задавая в pkeyid ресурс приватного ключа
+     * Prepares wsse:SecurityToken element based on public certificate
      * 
      * @param DOMDocument $dom
      * @param string $cert
@@ -162,7 +171,7 @@ class SignedSoapClient extends SoapClient
         $certinfo = pathinfo($cert);
         $cert = file_get_contents($cert);
         if (in_array(strtolower($certinfo['extension']), array('p12', 'pfx'))) {
-            // читаем pkcs12
+            // for PKCS12 files
             openssl_pkcs12_read($cert, $certs, empty($this->_ssl_options['certpasswd']) ? '' : $this->_ssl_options['certpasswd']);
             $pkeyid = openssl_pkey_get_private($certs['pkey']);
             $pubcert = explode("\n", $certs['cert']);
@@ -173,7 +182,7 @@ class SignedSoapClient extends SoapClient
             $pubcert = implode('', $pubcert);
             unset($certs);
         } else {
-            // читаем pem
+            // for PEM files
             $pkeyid = openssl_pkey_get_private($cert);
             $tempcert = openssl_x509_read($cert);
             openssl_x509_export($tempcert, $pubcert);
@@ -182,7 +191,7 @@ class SignedSoapClient extends SoapClient
 
         $tokenId = 'Security-Token-'.$this->getUUID($pubcert);
 
-        // добавим ссылку на ключ в заголовок
+        // add public key reference to the token
         $token = $dom->createElementNS(self::WSSE_NS, 'wsse:BinarySecurityToken', $pubcert);
         $token->setAttribute('ValueType', 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3');
         $token->setAttribute('EncodingType', 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary');
@@ -191,7 +200,7 @@ class SignedSoapClient extends SoapClient
     }
 
     /**
-     * Подмена запроса 
+     * Replace generic request with our own signed HTTPS request
      *
      * @param string $request
      * @param string $location
@@ -201,35 +210,45 @@ class SignedSoapClient extends SoapClient
      */
     function __doRequest($request, $location, $action, $version)
     {
-        // проведём добавление нужных заголовков
+        // update request with security headers
         $dom = new DOMDocument('1.0', 'utf-8');
         $dom->loadXML($request);
 
         $xp = new DOMXPath($dom);
         $xp->registerNamespace('SOAP-ENV', self::SOAP_NS);
 
-        // найдём узел SoapHeader, а если его нет - создадим
+        // find or create SoapHeader
         $headernode = $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Header')->item(0);
         if (!$headernode)
             $headernode = $dom->documentElement->insertBefore($dom->createElementNS(self::SOAP_NS, 'SOAP-ENV:Header'), $bodynode);
 
-        // и проставим wsu:Id у тела запроса
+        /**
+         * mark SOAP-ENV:Body with wsu:Id for signing 
+         *
+         * >> if you want to sign other elements - mark them on this step and provide id's on the later step
+         *
+         */
         $bodynode = $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Body')->item(0);
         $bodynode->setAttributeNS(self::WSU_NS, 'wsu:Id', 'reqBody');
 
-        // добавим элемент wsse:Security, в который будет завёрнута информация о подписи
+        // prepare Security element
         $secNode = $headernode->appendChild($dom->createElementNS(self::WSSE_NS, 'wsse:Security'));
 
-        // добавляем ссылку на ключ
+        // update with token data
         $secNode->appendChild($this->buildSecurityToken($dom, $this->_ssl_options['cert'],
             empty($this->_ssl_options['certpasswd']) ? '' : $this->_ssl_options['certpasswd'],
             $pkeyid, $tokenId));
 
-        // ссылка на подписываемый элемент
+        /**
+         * create Signature element and build SignedInfo for elements with provided ids
+         *
+         * >> if you are signing other elements, add id's to the second argument of buildSignedInfo
+         *
+         */
         $signNode = $secNode->appendChild($dom->createElementNS(self::DS_NS, 'ds:Signature'));
         $signInfo = $signNode->appendChild($this->buildSignedInfo($dom, array('reqBody')));
 
-        // и сама подпись
+        // now that SignedInfo is built, sign it actually
         openssl_sign($this->canonicalizeNode($signInfo), $signature, $pkeyid, OPENSSL_ALGO_SHA1);
         openssl_free_key($pkeyid);
 
@@ -239,8 +258,10 @@ class SignedSoapClient extends SoapClient
         $keyRef = $secTokRef->appendChild($dom->createElementNS(self::WSSE_NS, 'wsse:Reference'));
         $keyRef->setAttribute('URI', "#{$tokenId}");
 
-        $request = $dom->saveXML(); 
-        
+        // convert new document to string
+        $request = $dom->saveXML();
+
+        // make our own HTTPRequest call with SSL certificate
         $options = array('timeout' => $this->_timeout);
         if ($this->_ssl_options)
             $options['ssl'] = $this->_ssl_options;
