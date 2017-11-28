@@ -8,8 +8,6 @@ Requirements
 
 - PHP compiled with SOAP support
 - xmllint_ utility (ubuntu/debian has it in libxml2-utils package)
-- 
-
 .. _xmllint: http://xmlsoft.org/xmllint.html
 
 
@@ -29,6 +27,9 @@ HTTP options, identical to HTTPRequest_ class request options are accepted too::
                         'ssl' => array(
                                 'cert' => '/file',
                                 'certpasswd' => 'password'
+                                'verify_peer' => false,
+                                'verify_peer_name' => false,
+                                'allow_self_signed' => false
                                 )
                         )
         );
@@ -37,3 +38,12 @@ HTTP options, identical to HTTPRequest_ class request options are accepted too::
 
 Class signes SOAP-ENV:Body part of the message by default, this behaviour can be changed
 in ``buildSignedInfo`` method.
+
+
+
+Todo
+-----
+-[] SSL Stick standard.
+-[] Add GuzzleHttp Support
+-[] Add Curl Support
+
