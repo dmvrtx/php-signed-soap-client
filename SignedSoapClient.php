@@ -27,18 +27,18 @@
 class SignedSoapClient extends SoapClient
 {
     // `xmllint` path
-    const XMLLINT_PATH          = '/usr/bin/xmllint';
+    const XMLLINT_PATH = '/usr/bin/xmllint';
 
     // namespaces defined by standard
-    const WSU_NS    = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd';
-    const WSSE_NS   = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
-    const SOAP_NS   = 'http://schemas.xmlsoap.org/soap/envelope/';
-    const DS_NS     = 'http://www.w3.org/2000/09/xmldsig#';
+    const WSU_NS = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd';
+    const WSSE_NS = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
+    const SOAP_NS = 'http://schemas.xmlsoap.org/soap/envelope/';
+    const DS_NS = 'http://www.w3.org/2000/09/xmldsig#';
 
-    protected $_ssl_options     = array();
-    protected $_timeout         = 60;
+    protected $_ssl_options = array();
+    protected $_timeout = 60;
 
-    function __construct($wsdl, $options=array())
+    function __construct($wsdl, $options = array())
     {
         if (isset($options['ssl'])) {
             $this->_ssl_options = $options['ssl'];
@@ -48,8 +48,9 @@ class SignedSoapClient extends SoapClient
                     $this->_ssl_options['certtype'] = 'P12';
             }
         }
-        if (isset($options['connection_timeout']) && intval($options['connection_timeout']))
+        if (isset($options['connection_timeout']) && intval($options['connection_timeout'])) {
             $this->_timeout = intval($options['connection_timeout']);
+        }
         return parent::__construct($wsdl, $options);
     }
 
@@ -59,10 +60,11 @@ class SignedSoapClient extends SoapClient
      * @param mixed $data
      * @return string
      */
-    function getUUID($data=null)
+    function getUUID($data = null)
     {
-        if ($data === null)
+        if ($data === null) {
             $data = microtime() . uniqid();
+        }
         $id = md5($data);
         return sprintf('%08s-%04s-%04s-%04s-%012s', substr($id, 0, 8), substr($id, 8, 4), substr($id, 12, 4),
             substr(16, 4), substr($id, 20));
@@ -84,8 +86,9 @@ class SignedSoapClient extends SoapClient
         fclose($f);
 
         $f = popen(sprintf('%s --exc-c14n %s', self::XMLLINT_PATH, $fname), 'r');
-        while ($read = fread($f, 4096))
+        while ($read = fread($f, 4096)) {
             $result .= $read;
+        }
         pclose($f);
         unlink($fname);
         return $result;
@@ -134,8 +137,9 @@ class SignedSoapClient extends SoapClient
         foreach ($ids as $id) {
             // find a node and canonicalize it
             $nodes = $xp->query("//*[(@wsu:Id='{$id}')]");
-            if ($nodes->length == 0)
+            if ($nodes->length == 0) {
                 continue;
+            }
             $canonicalized = $this->canonicalizeNode($nodes->item(0));
 
             // create node Reference
@@ -158,7 +162,7 @@ class SignedSoapClient extends SoapClient
 
     /**
      * Prepares wsse:SecurityToken element based on public certificate
-     * 
+     *
      * @param DOMDocument $dom
      * @param string $cert
      * @param string $certpasswd
@@ -189,7 +193,7 @@ class SignedSoapClient extends SoapClient
             openssl_x509_free($tempcert);
         }
 
-        $tokenId = 'Security-Token-'.$this->getUUID($pubcert);
+        $tokenId = 'Security-Token-' . $this->getUUID($pubcert);
 
         // add public key reference to the token
         $token = $dom->createElementNS(self::WSSE_NS, 'wsse:BinarySecurityToken', $pubcert);
@@ -208,7 +212,7 @@ class SignedSoapClient extends SoapClient
      * @param int $version
      * @return string
      */
-    function __doRequest($request, $location, $action, $version)
+    function __doRequest($request, $location, $action, $version, $one_way = NULL)
     {
         // update request with security headers
         $dom = new DOMDocument('1.0', 'utf-8');
@@ -219,11 +223,12 @@ class SignedSoapClient extends SoapClient
 
         // find or create SoapHeader
         $headernode = $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Header')->item(0);
-        if (!$headernode)
+        if (!$headernode) {
             $headernode = $dom->documentElement->insertBefore($dom->createElementNS(self::SOAP_NS, 'SOAP-ENV:Header'), $bodynode);
+        }
 
         /**
-         * mark SOAP-ENV:Body with wsu:Id for signing 
+         * mark SOAP-ENV:Body with wsu:Id for signing
          *
          * >> if you want to sign other elements - mark them on this step and provide id's on the later step
          *
@@ -263,8 +268,9 @@ class SignedSoapClient extends SoapClient
 
         // make our own HTTPRequest call with SSL certificate
         $options = array('timeout' => $this->_timeout);
-        if ($this->_ssl_options)
+        if ($this->_ssl_options) {
             $options['ssl'] = $this->_ssl_options;
+        }
         $request = new HTTPRequest($location, HTTPRequest::METH_POST, $options);
         $request->setHeaders(array(
             'Content-Type' => 'application/soap+xml; charset=utf-8',
@@ -276,4 +282,3 @@ class SignedSoapClient extends SoapClient
         return $request->getResponseBody();
     }
 }
-?>
