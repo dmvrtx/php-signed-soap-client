@@ -218,9 +218,12 @@ class SignedSoapClient extends SoapClient
         $xp->registerNamespace('SOAP-ENV', self::SOAP_NS);
 
         // find or create SoapHeader
-        $headernode = $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Header')->item(0);
-        if (!$headernode)
+        $headernode	= $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Header')->item(0);
+		$bodynode	= $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Body')->item(0);
+		
+        if(!$headernode){
             $headernode = $dom->documentElement->insertBefore($dom->createElementNS(self::SOAP_NS, 'SOAP-ENV:Header'), $bodynode);
+		}
 
         /**
          * mark SOAP-ENV:Body with wsu:Id for signing 
@@ -228,7 +231,6 @@ class SignedSoapClient extends SoapClient
          * >> if you want to sign other elements - mark them on this step and provide id's on the later step
          *
          */
-        $bodynode = $xp->query('/SOAP-ENV:Envelope/SOAP-ENV:Body')->item(0);
         $bodynode->setAttributeNS(self::WSU_NS, 'wsu:Id', 'reqBody');
 
         // prepare Security element
