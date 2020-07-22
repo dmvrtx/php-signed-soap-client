@@ -8,7 +8,7 @@ Requirements
 
 - PHP compiled with SOAP support
 - xmllint_ utility (ubuntu/debian has it in libxml2-utils package)
-- 
+- HTTPRequest class provided by `pecl_http` extension
 
 .. _xmllint: http://xmlsoft.org/xmllint.html
 
